@@ -1,26 +1,65 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import Avatar from 'primevue/avatar'
-import Badge from 'primevue/badge'
 import { useAuthStore } from '@/features/auth/store/auth.store'
+import { useNotificationsStore } from '@/features/notifications/store/notifications.store'
 import HipoSimLogo from '@/shared/components/HipoSimLogo.vue'
+import LanguageSwitcher from '@/shared/components/LanguageSwitcher.vue'
+import { landingUrl } from '@/shared/links'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
 
 const navItems = [
-  { label: 'Dashboard', icon: 'pi pi-th-large', to: '/dashboard' },
-  { label: 'Leads e Interesados', icon: 'pi pi-users', to: '/leads', badge: 8 },
-  { label: 'Mi Inmobiliaria', icon: 'pi pi-building', to: '/mi-inmobiliaria' },
-  { label: 'Notificaciones', icon: 'pi pi-bell', to: '/notificaciones', badge: 3 },
-  { label: 'Configuración', icon: 'pi pi-cog', to: '/configuracion' },
+  { key: 'dashboard', icon: 'pi pi-th-large', to: '/dashboard' },
+  { key: 'leads', icon: 'pi pi-users', to: '/leads' },
+  { key: 'properties', icon: 'pi pi-building', to: '/mi-inmobiliaria' },
+  { key: 'notifications', icon: 'pi pi-bell', to: '/notificaciones' },
+  { key: 'settings', icon: 'pi pi-cog', to: '/configuracion' },
 ]
+
+const notifications = useNotificationsStore()
+
+// New leads are counted for the badge of the menu. The API has no push, so the portal asks again every minute.
+const REFRESH_EVERY_MS = 60_000
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  notifications.refresh()
+  timer = setInterval(notifications.refresh, REFRESH_EVERY_MS)
+})
+onBeforeUnmount(() => clearInterval(timer))
 
 const isActive = (to: string) => computed(() => route.path.startsWith(to)).value
 
+const initials = computed(() =>
+  (auth.session?.fullName ?? 'A')
+    .split(' ')
+    .map((part) => part[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase(),
+)
+
+// Below 900px the sidebar becomes a drawer opened from the top bar.
+const menuOpen = ref(false)
+const mainEl = ref<HTMLElement | null>(null)
+
+// After each navigation the focus moves to the content, so keyboard and screen reader users start there.
+watch(
+  () => route.path,
+  async () => {
+    menuOpen.value = false
+    await nextTick()
+    mainEl.value?.focus({ preventScroll: true })
+  },
+)
+
 function handleLogout() {
+  notifications.reset()
   auth.logout()
   router.push({ name: 'login' })
 }
@@ -28,17 +67,17 @@ function handleLogout() {
 
 <template>
   <div class="shell">
-    <aside class="sidebar">
+    <a class="skip-link" href="#main-content">{{ t('app.skipToContent') }}</a>
+
+    <div v-if="menuOpen" class="overlay" aria-hidden="true" @click="menuOpen = false" />
+
+    <aside id="main-nav" class="sidebar" :class="{ 'sidebar--open': menuOpen }">
       <div class="sidebar__brand">
         <HipoSimLogo :size="34" />
-        <span class="sidebar__brand-sub">Portal Promotores y Agenc...</span>
+        <span class="sidebar__brand-sub">{{ t('nav.sidebarSub') }}</span>
       </div>
 
-      <button class="sidebar__new" @click="router.push({ name: 'leads' })">
-        <i class="pi pi-user-plus" /> Nuevo Prospecto
-      </button>
-
-      <nav class="sidebar__nav">
+      <nav class="sidebar__nav" :aria-label="t('nav.label')">
         <RouterLink
           v-for="item in navItems"
           :key="item.to"
@@ -46,56 +85,64 @@ function handleLogout() {
           class="sidebar__link"
           :class="{ 'sidebar__link--active': isActive(item.to) }"
         >
-          <i :class="item.icon" />
-          <span>{{ item.label }}</span>
-          <span v-if="item.badge" class="sidebar__dot">{{ item.badge }}</span>
+          <i :class="item.icon" aria-hidden="true" />
+          <span>{{ t(`nav.${item.key}`) }}</span>
+          <span
+            v-if="item.key === 'notifications' && notifications.count > 0"
+            class="sidebar__dot"
+            :aria-label="t('nav.newLeadsBadge', { count: notifications.count })"
+          >
+            {{ notifications.count }}
+          </span>
         </RouterLink>
       </nav>
 
       <div class="sidebar__footer">
-        <a href="#" class="sidebar__footer-link"><i class="pi pi-question-circle" /> Soporte B2B</a>
-        <button class="sidebar__footer-link sidebar__logout" @click="handleLogout">
-          <i class="pi pi-sign-out" /> Cerrar Sesión
+        <button type="button" class="sidebar__footer-link sidebar__logout" @click="handleLogout">
+          <i class="pi pi-sign-out" aria-hidden="true" /> {{ t('nav.logout') }}
         </button>
       </div>
     </aside>
 
     <div class="main">
       <header class="topbar">
-        <button class="topbar__sede">
-          <span class="topbar__sede-label">Sede / Proyecto Activo</span>
-          <strong>{{ auth.session?.companyName ?? 'Inmobiliaria' }} - Sala Jesús María</strong>
-          <i class="pi pi-chevron-down" />
+        <button
+          type="button"
+          class="topbar__menu"
+          :aria-label="t('nav.openMenu')"
+          aria-controls="main-nav"
+          :aria-expanded="menuOpen"
+          @click="menuOpen = !menuOpen"
+        >
+          <i class="pi pi-bars" aria-hidden="true" />
         </button>
 
-        <div class="topbar__search">
-          <i class="pi pi-search" />
-          <input type="text" placeholder="Buscar prospecto por DNI, nombre..." />
+        <div class="topbar__sede">
+          <span class="topbar__sede-label">{{ t('nav.agency') }}</span>
+          <strong>{{ auth.session?.companyName ?? t('nav.agency') }}</strong>
         </div>
 
         <div class="topbar__actions">
-          <button class="topbar__icon-btn">
-            <i class="pi pi-bell" />
-            <Badge value="3" severity="warn" class="topbar__icon-badge" />
-          </button>
-          <button class="topbar__icon-btn">
-            <i class="pi pi-question-circle" />
-          </button>
-
+          <LanguageSwitcher />
           <div class="topbar__user">
-            <Avatar label="VT" shape="circle" class="topbar__avatar" />
+            <Avatar :label="initials" shape="circle" class="topbar__avatar" aria-hidden="true" />
             <div class="topbar__user-info">
-              <strong>Lic. Valeria Torres</strong>
-              <span>Asesora Senior Hipotecaria</span>
+              <strong>{{ auth.session?.fullName }}</strong>
+              <span>{{ t('nav.advisor') }}</span>
             </div>
-            <i class="pi pi-angle-down" />
           </div>
         </div>
       </header>
 
-      <main class="content">
+      <main id="main-content" ref="mainEl" class="content" tabindex="-1">
         <RouterView />
       </main>
+
+      <footer class="legal">
+        <span>{{ t('app.copyright') }}</span>
+        <a :href="`${landingUrl}#terminos`" target="_blank" rel="noopener noreferrer">{{ t('app.terms') }}</a>
+        <a :href="`${landingUrl}#privacidad`" target="_blank" rel="noopener noreferrer">{{ t('app.privacy') }}</a>
+      </footer>
     </div>
   </div>
 </template>
@@ -107,7 +154,7 @@ function handleLogout() {
   --panel-surface-alt: #eef4f4;
   --panel-border: #e3e9ea;
   --panel-text: #1f2933;
-  --panel-text-muted: #64748b;
+  --panel-text-muted: #56657a; /* AA contrast on the panel background */
 
   display: grid;
   grid-template-columns: 250px 1fr;
@@ -375,5 +422,111 @@ function handleLogout() {
   flex: 1;
   padding: var(--space-3);
   overflow-y: auto;
+}
+
+.main {
+  min-width: 0;
+}
+
+.topbar__menu {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  background: var(--panel-surface);
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.overlay {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar__menu {
+    display: inline-flex;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 260px;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .sidebar--open {
+    transform: translateX(0);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.25);
+  }
+
+  .overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    background: rgba(15, 23, 42, 0.45);
+  }
+
+  .topbar__user-info {
+    display: none;
+  }
+}
+
+.legal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--panel-border);
+  font-size: 0.85rem;
+  color: var(--panel-text-muted);
+}
+
+.legal a {
+  color: var(--color-primary);
+}
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 100;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 8px;
+}
+
+.content:focus {
+  outline: none;
+}
+
+.sidebar__link:focus-visible,
+.sidebar__footer-link:focus-visible,
+.topbar__menu:focus-visible,
+.legal a:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 </style>

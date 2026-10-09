@@ -1,260 +1,221 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import Tag from 'primevue/tag'
+import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
 import Select from 'primevue/select'
-import ProgressBar from 'primevue/progressbar'
+import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
+import Message from 'primevue/message'
+import { leadsApi } from '@/features/leads/api/leads.api'
+import { leadStatuses, type LeadDetail, type LeadStatus } from '@/features/leads/api/leads.types'
+import { statusLabel, statusSeverity } from '@/features/leads/api/leads.labels'
+import { getStatus } from '@/shared/api/http'
+import { useNotificationsStore } from '@/features/notifications/store/notifications.store'
 import {
-  findLeadById,
-  statusLabels,
-  statusSeverity,
   formatCurrency,
-  formatDate,
-  formatRelativeTime,
-} from '@/features/leads/data/mock-leads'
+  formatInstallment,
+  formatRate,
+  formatDateTime,
+  toInternationalPhone,
+} from '@/shared/format'
+
+const MAX_NOTE_LENGTH = 500
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
+const notifications = useNotificationsStore()
+const leadId = route.params.id as string
 
-const lead = computed(() => findLeadById(route.params.id as string))
+const lead = ref<LeadDetail | null>(null)
+const isLoading = ref(true)
+// Keys instead of text, so the message follows the interface language.
+const loadErrorKey = ref<'detail.denied' | 'detail.notFound' | 'detail.loadError' | ''>('')
 
-const statusOptions = Object.entries(statusLabels).map(([value, label]) => ({ value, label }))
-const advisorOptions = ['Valeria Soto (Sala Jesús María - Actual)', 'Renzo Ibarra (Sala Surco)', 'Camila Ríos (Sala La Molina)']
+const selectedStatus = ref<LeadStatus>('new')
+const isSavingStatus = ref(false)
+const statusFeedback = ref<{ severity: 'success' | 'error'; key: 'detail.statusSaved' | 'detail.statusError' } | null>(null)
+
 const noteDraft = ref('')
+const isSavingNote = ref(false)
+const noteErrorKey = ref<'detail.noteRequired' | 'detail.noteTooLong' | 'detail.noteError' | ''>('')
 
-function dtiBarSeverity(status: string) {
-  if (status === 'Saludable') return 'success'
-  if (status === 'Ajustado') return 'warn'
-  return 'danger'
+const statusOptions = computed(() => leadStatuses.map((value) => ({ value, label: statusLabel(value) })))
+
+// US24 scenario 2: the advisor contacts the buyer on the number the buyer authorized.
+const whatsappUrl = computed(() =>
+  lead.value ? `https://wa.me/${toInternationalPhone(lead.value.buyer.phone)}` : '#',
+)
+const phoneUrl = computed(() => (lead.value ? `tel:+${toInternationalPhone(lead.value.buyer.phone)}` : '#'))
+
+const statusChanged = computed(() => lead.value !== null && selectedStatus.value !== lead.value.status)
+const history = computed(() => [...(lead.value?.history ?? [])].reverse())
+
+function describeEntry(type: 'status' | 'note', text: string) {
+  return type === 'status' ? t('detail.statusEntry', { status: statusLabel(text as LeadStatus) }) : text
 }
+
+function authorLabel(name: string) {
+  return name === 'Sistema' || name === 'System' ? t('detail.system') : name
+}
+
+async function loadLead() {
+  isLoading.value = true
+  loadErrorKey.value = ''
+  try {
+    lead.value = await leadsApi.get(leadId)
+    selectedStatus.value = lead.value.status
+  } catch (error) {
+    const status = getStatus(error)
+    // US24 scenario 3: a lead of another agency is denied.
+    if (status === 403) loadErrorKey.value = 'detail.denied'
+    else if (status === 404) loadErrorKey.value = 'detail.notFound'
+    else loadErrorKey.value = 'detail.loadError'
+  } finally {
+    isLoading.value = false
+  }
+}
+
+async function saveStatus() {
+  if (!lead.value || !statusChanged.value) return
+  isSavingStatus.value = true
+  statusFeedback.value = null
+  try {
+    await leadsApi.changeStatus(lead.value.id, selectedStatus.value)
+    // Reload so the history shows who changed the status and when, as the API recorded it (US25).
+    await loadLead()
+    // The menu badge counts leads that are still new, so it changes with this update.
+    notifications.refresh()
+    statusFeedback.value = { severity: 'success', key: 'detail.statusSaved' }
+  } catch {
+    statusFeedback.value = { severity: 'error', key: 'detail.statusError' }
+  } finally {
+    isSavingStatus.value = false
+  }
+}
+
+async function saveNote() {
+  const text = noteDraft.value.trim()
+  noteErrorKey.value = ''
+  if (!text) {
+    noteErrorKey.value = 'detail.noteRequired'
+    return
+  }
+  if (text.length > MAX_NOTE_LENGTH) {
+    noteErrorKey.value = 'detail.noteTooLong'
+    return
+  }
+  isSavingNote.value = true
+  try {
+    await leadsApi.addNote(leadId, text)
+    noteDraft.value = ''
+    await loadLead()
+  } catch {
+    noteErrorKey.value = 'detail.noteError'
+  } finally {
+    isSavingNote.value = false
+  }
+}
+
+onMounted(loadLead)
 </script>
 
 <template>
-  <div v-if="lead" class="detail">
-    <nav class="detail__subnav">
-      <div class="detail__subnav-trail">
-        <span>Inmobiliaria VivaPerú - Sala Jesús María</span> <i class="pi pi-angle-right" />
-        <RouterLink :to="{ name: 'leads' }">Leads e Interesados</RouterLink> <i class="pi pi-angle-right" />
-        <strong>#{{ lead.id }} ({{ lead.name }})</strong>
-      </div>
-      <div class="detail__subnav-tabs">
-        <span>Proyectos Activos</span>
-        <span class="detail__subnav-tabs-active">Simulador Matriz</span>
-        <span>Reportes SBS</span>
-        <span>Ver Métricas</span>
-        <Button label="Nuevo Crédito" size="small" class="detail__new-credit" />
-      </div>
-    </nav>
+  <div class="detail">
+    <Button
+      :label="t('detail.back')"
+      icon="pi pi-arrow-left"
+      text
+      class="detail__back"
+      @click="router.push({ name: 'leads' })"
+    />
 
-    <section class="header-card">
-      <div class="header-card__top">
-        <div class="header-card__identity">
-          <div class="header-card__avatar">{{ lead.name.split(' ').map((n) => n[0]).slice(0, 2).join('') }}</div>
-          <div>
-            <h1>{{ lead.name }}</h1>
-            <div class="header-card__status">
-              <Tag :value="`Estado: ${statusLabels[lead.status]} (${formatRelativeTime(lead.createdAt)})`" :severity="statusSeverity[lead.status]" />
-            </div>
-          </div>
+    <p v-if="isLoading && !lead" class="detail__state" role="status">{{ t('detail.loading') }}</p>
+
+    <Message v-else-if="loadErrorKey" severity="error" :closable="false">{{ t(loadErrorKey) }}</Message>
+
+    <template v-else-if="lead">
+      <header class="detail__header">
+        <div>
+          <h1>{{ lead.buyer.fullName }}</h1>
+          <Tag :value="statusLabel(lead.status)" :severity="statusSeverity[lead.status]" />
         </div>
-
-        <div class="header-card__actions">
-          <Button label="Contactar por WhatsApp" icon="pi pi-whatsapp" class="header-card__whatsapp" />
-          <Button label="Llamar directamente" icon="pi pi-phone" severity="secondary" outlined />
-          <Select :options="statusOptions" option-label="label" option-value="value" :model-value="lead.status" placeholder="Cambiar estado" class="header-card__status-select" />
-          <button class="header-card__icon-btn"><i class="pi pi-copy" /></button>
+        <div class="detail__contact-actions">
+          <a class="contact-btn" :href="whatsappUrl" target="_blank" rel="noopener noreferrer">
+            <i class="pi pi-whatsapp" aria-hidden="true" /> {{ t('detail.whatsapp') }}
+          </a>
+          <a class="contact-btn contact-btn--outline" :href="phoneUrl">
+            <i class="pi pi-phone" aria-hidden="true" /> {{ t('detail.call') }}
+          </a>
         </div>
-      </div>
+      </header>
 
-      <div class="header-card__meta">
-        <span><i class="pi pi-id-card" /> DNI: {{ lead.dni }}</span>
-        <span class="header-card__meta-verified"><i class="pi pi-check-circle" /> Simulación verificada SBS</span>
-        <span><i class="pi pi-user" /> Asesor asignado: <strong>{{ lead.assignedAdvisor }}</strong></span>
-      </div>
-    </section>
-
-    <div class="detail__grid">
-      <div class="detail__main">
-        <section class="card">
-          <div class="card__header">
-            <h2><i class="pi pi-briefcase" /> Datos del Solicitante y Régimen Laboral</h2>
-            <Tag value="Pre-evaluado" severity="info" />
-          </div>
-          <div class="kv-grid">
-            <div><dt>Nombre Completo</dt><dd>{{ lead.name }}{{ lead.coApplicantName ? ' / ' + lead.coApplicantName : '' }}</dd></div>
-            <div><dt>Documento de Identidad</dt><dd>DNI {{ lead.dni }} ({{ lead.age }} años)</dd></div>
-            <div><dt>Correo Electrónico</dt><dd>{{ lead.email }}</dd></div>
-            <div><dt>Teléfono Principal</dt><dd>{{ lead.phone }}</dd></div>
-            <div>
-              <dt>Tipo de Solicitud</dt>
-              <dd>{{ lead.requestType }}{{ lead.coApplicantName ? ` (con ${lead.coApplicantName})` : '' }}</dd>
-            </div>
-            <div><dt>Régimen Laboral</dt><dd>{{ lead.employmentRegime }}</dd></div>
-          </div>
+      <div class="detail__grid">
+        <section class="card" aria-labelledby="contact-title">
+          <h2 id="contact-title">{{ t('detail.contactTitle') }}</h2>
+          <dl>
+            <div><dt>{{ t('detail.email') }}</dt><dd>{{ lead.buyer.email }}</dd></div>
+            <div><dt>{{ t('detail.phone') }}</dt><dd>{{ lead.buyer.phone }}</dd></div>
+          </dl>
         </section>
 
-        <section class="card">
-          <div class="card__header">
-            <h2><i class="pi pi-chart-line" /> Capacidad Financiera y Ratios de Aprobación</h2>
-            <Tag :value="`Score Crediticio: ${lead.financialCapacity.creditScoreLabel}`" severity="success" />
-          </div>
-          <div class="capacity-grid">
-            <div class="capacity-cell">
-              <span class="label">{{ lead.requestType === 'Individual' ? 'Ingreso Neto' : 'Ingreso Neto Conyugal' }}</span>
-              <strong>{{ formatCurrency(lead.financialCapacity.netIncome) }} / mes</strong>
-              <span class="hint"><i class="pi pi-check" /> {{ lead.financialCapacity.incomeSupport }}</span>
-            </div>
-            <div class="capacity-cell">
-              <span class="label">Ratio DTI (Carga Financiera) <Tag :value="lead.financialCapacity.dtiStatus" :severity="dtiBarSeverity(lead.financialCapacity.dtiStatus)" class="capacity-cell__tag" /></span>
-              <strong>{{ lead.financialCapacity.dtiRatio }}% <span class="hint">máx {{ lead.financialCapacity.dtiMax }}%</span></strong>
-              <ProgressBar :value="(lead.financialCapacity.dtiRatio / lead.financialCapacity.dtiMax) * 100" :show-value="false" class="capacity-cell__bar" />
-            </div>
-            <div class="capacity-cell">
-              <span class="label">Cuota Máx. Aprobable</span>
-              <strong>{{ formatCurrency(lead.financialCapacity.maxApprovablePayment) }} / mes</strong>
-              <span class="hint"><i class="pi pi-arrow-up" /> Holgura favorable de {{ formatCurrency(lead.financialCapacity.paymentHeadroom) }}</span>
-            </div>
-          </div>
+        <section class="card" aria-labelledby="sim-title">
+          <h2 id="sim-title">{{ t('detail.simTitle') }}</h2>
+          <dl>
+            <div><dt>{{ t('detail.propertyPrice') }}</dt><dd>{{ formatCurrency(lead.simulation.propertyPrice) }}</dd></div>
+            <div><dt>{{ t('detail.downPayment') }}</dt><dd>{{ formatCurrency(lead.simulation.downPayment) }}</dd></div>
+            <div><dt>{{ t('detail.bonus') }}</dt><dd>{{ formatCurrency(lead.simulation.goodPayerBonus) }}</dd></div>
+            <div><dt>{{ t('detail.financed') }}</dt><dd>{{ formatCurrency(lead.simulation.financedAmount) }}</dd></div>
+            <div><dt>{{ t('detail.term') }}</dt><dd>{{ t('detail.months', { n: lead.simulation.termInMonths }) }}</dd></div>
+            <div><dt>{{ t('detail.installment') }}</dt><dd>{{ formatInstallment(lead.simulation.monthlyInstallment) }}</dd></div>
+            <div><dt>{{ t('detail.tcea') }}</dt><dd>{{ formatRate(lead.simulation.tcea) }}</dd></div>
+          </dl>
         </section>
 
-        <section class="certificate">
-          <div class="certificate__header">
-            <span>SIMULACIÓN CERTIFICADA HIPOSIM #{{ lead.simulation.certificateId }}</span>
-            <div class="certificate__price">
-              <span>Valor Inmueble</span>
-              <strong>{{ formatCurrency(lead.simulation.propertyPrice) }}</strong>
-            </div>
+        <section class="card" aria-labelledby="status-title">
+          <h2 id="status-title">{{ t('detail.statusTitle') }}</h2>
+          <div class="status-row">
+            <label for="status-select" class="sr-only">{{ t('detail.newStatus') }}</label>
+            <Select
+              v-model="selectedStatus"
+              input-id="status-select"
+              :options="statusOptions"
+              option-label="label"
+              option-value="value"
+              class="status-row__select"
+            />
+            <Button :label="t('detail.saveStatus')" :disabled="!statusChanged" :loading="isSavingStatus" @click="saveStatus" />
           </div>
-          <p class="certificate__property">Inmueble: {{ lead.simulation.propertyType }} en {{ lead.simulation.district }}</p>
-
-          <div class="certificate__grid">
-            <div>
-              <h3><i class="pi pi-wallet" /> Composición de la Cuota Inicial</h3>
-              <div class="certificate__row">
-                <span>Cuota inicial aportada ({{ lead.simulation.downPaymentPct }}%)</span>
-                <strong>{{ formatCurrency(lead.simulation.downPaymentAmount) }}</strong>
-              </div>
-              <div v-if="lead.simulation.bbpApplied" class="certificate__row certificate__row--bbp">
-                <span><i class="pi pi-plus-circle" /> Bono Buen Pagador (Sostenible)</span>
-                <strong>+ {{ formatCurrency(lead.simulation.bbpAmount ?? 0) }}</strong>
-              </div>
-              <div class="certificate__row certificate__row--total">
-                <span>Cuota Inicial Efectiva Total ({{ lead.simulation.effectiveInitialPct }}%)</span>
-                <strong>{{ formatCurrency(lead.simulation.effectiveInitialAmount) }}</strong>
-              </div>
-            </div>
-            <div>
-              <h3><i class="pi pi-building-columns" /> Estructura del Crédito Hipotecario</h3>
-              <div class="certificate__row">
-                <span>Monto neto a financiar</span>
-                <strong>{{ formatCurrency(lead.simulation.financingAmount) }}</strong>
-              </div>
-              <div class="certificate__row">
-                <span>Plazo seleccionado</span>
-                <strong>{{ lead.simulation.termYears }} años ({{ lead.simulation.termYears * 12 }} cuotas)</strong>
-              </div>
-              <div class="certificate__row">
-                <span>TCEA Referencial de mercado</span>
-                <strong>{{ lead.simulation.marketTcea }}% <span class="hint">fija en soles</span></strong>
-              </div>
-            </div>
-          </div>
-
-          <div class="certificate__footer">
-            <div>
-              <span>CUOTA MENSUAL ESTIMADA PROYECTADA</span>
-              <strong>{{ formatCurrency(lead.simulation.monthlyPayment) }} <small>/ mes</small></strong>
-              <span class="certificate__footnote">Incluye amortización capital, intereses, seguro de desgravamen y seguro todo riesgo.</span>
-            </div>
-            <div class="certificate__footer-actions">
-              <Tag value="Menor Costo Financiero SBS" severity="success" />
-              <Button label="Ver Tabla de Amortización" size="small" severity="secondary" outlined />
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div class="detail__side">
-        <section class="card">
-          <div class="card__header">
-            <h2><i class="pi pi-map-marker" /> Match de Inventario</h2>
-            <Tag :value="`${lead.matchedProperties[0]?.match ?? 0}% Afinidad`" severity="success" />
-          </div>
-
-          <div v-if="lead.matchedProperties.length" class="match-list">
-            <div
-              v-for="property in lead.matchedProperties"
-              :key="property.id"
-              class="match-card"
-              :class="{ 'match-card--recommended': property.recommended }"
-            >
-              <Tag v-if="property.recommended" :value="`¡MATCH RECOMENDADO ${property.match}%!`" severity="success" class="match-card__badge" />
-              <div class="match-card__header">
-                <strong>{{ property.name }}</strong>
-                <span class="match-card__price">{{ formatCurrency(property.price) }}</span>
-              </div>
-              <span class="match-card__address">{{ property.address }}</span>
-              <div class="match-card__specs">
-                <span>{{ property.areaM2 }} m² <small>Área Total</small></span>
-                <span>{{ property.rooms }} Dorm. <small>Habitaciones</small></span>
-                <span>{{ property.baths }} Baños <small>Servicios</small></span>
-              </div>
-              <span class="match-card__delivery">{{ property.deliveryStatus }}</span>
-              <div class="match-card__footer">
-                <span v-if="property.appliesToMivivienda" class="match-card__mivivienda"
-                  ><i class="pi pi-check" /> Aplica al Bono MiVivienda Sostenible</span
-                >
-                <Button v-if="property.recommended" label="Presentar a Lead" size="small" />
-                <a v-else href="#" class="match-card__compare">Comparar</a>
-              </div>
-            </div>
-          </div>
-          <p v-else class="empty-hint">Aún no hay propiedades sugeridas para este lead.</p>
+          <Message v-if="statusFeedback" :severity="statusFeedback.severity" :closable="false" role="status">
+            {{ t(statusFeedback.key) }}
+          </Message>
         </section>
 
-        <section class="card">
-          <div class="card__header">
-            <h2><i class="pi pi-send" /> Bitácora de Interacciones y CRM</h2>
-          </div>
-          <p class="crm-label">Registrar nueva llamada, visita o WhatsApp:</p>
-          <Textarea v-model="noteDraft" rows="2" placeholder="Escribir resumen de la conversación con el cliente..." class="crm-textarea" />
-          <div class="crm-toolbar">
-            <button class="crm-toolbar__icon"><i class="pi pi-paperclip" /></button>
-            <button class="crm-toolbar__icon"><i class="pi pi-calendar" /></button>
-            <Button label="Guardar Nota" size="small" class="crm-toolbar__save" />
-          </div>
+        <section class="card card--wide" aria-labelledby="notes-title">
+          <h2 id="notes-title">{{ t('detail.followUp') }}</h2>
+          <label for="note" class="sr-only">{{ t('detail.newNote') }}</label>
+          <Textarea
+            id="note"
+            v-model="noteDraft"
+            rows="3"
+            :maxlength="MAX_NOTE_LENGTH"
+            :placeholder="t('detail.notePlaceholder')"
+            :invalid="!!noteErrorKey"
+            fluid
+          />
+          <small v-if="noteErrorKey" class="field-error" role="alert">{{ t(noteErrorKey, { max: MAX_NOTE_LENGTH }) }}</small>
+          <Button :label="t('detail.addNote')" icon="pi pi-plus" class="note-btn" :loading="isSavingNote" @click="saveNote" />
 
-          <ul class="timeline">
-            <li v-for="item in lead.activity" :key="item.id">
-              <span class="timeline__dot" :class="{ 'timeline__dot--done': item.type === 'completed' }" />
-              <div>
-                <span class="timeline__time">{{ formatRelativeTime(item.date) }} ({{ formatDate(item.date) }})</span>
-                <strong>{{ item.title }}</strong>
-                <p>{{ item.description }}</p>
-              </div>
+          <ol class="timeline" :aria-label="t('detail.history')">
+            <li v-for="(entry, index) in history" :key="index" class="timeline__item">
+              <span class="timeline__text">{{ describeEntry(entry.type, entry.text) }}</span>
+              <span class="timeline__meta">{{ authorLabel(entry.authorName) }} · {{ formatDateTime(entry.atUtc) }}</span>
             </li>
-          </ul>
-        </section>
-
-        <section class="card">
-          <div class="card__header">
-            <h2><i class="pi pi-directions" /> Reasignar Lead Comercial</h2>
-          </div>
-          <p class="empty-hint">
-            Si requieres derivar este comprador a otra sala o a un broker bancario dedicado:
-          </p>
-          <Select :options="advisorOptions" :model-value="advisorOptions[0]" class="reassign-select" />
-          <Button label="Transferir" size="small" outlined class="reassign-btn" />
+          </ol>
         </section>
       </div>
-    </div>
-  </div>
-
-  <div v-else class="detail-empty">
-    <p>No se encontró este lead.</p>
-    <Button label="Volver a la bandeja" @click="router.push({ name: 'leads' })" />
+    </template>
   </div>
 </template>
 
@@ -262,539 +223,162 @@ function dtiBarSeverity(status: string) {
 .detail {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  color: var(--panel-text);
-  padding-bottom: 40px;
+  gap: var(--space-3);
 }
 
-.detail__subnav {
+.detail__back {
+  align-self: flex-start;
+}
+
+.detail__state {
+  padding: var(--space-4) 0;
+  text-align: center;
+  color: var(--color-neutral);
+}
+
+.detail__header {
   display: flex;
-  align-items: center;
   justify-content: space-between;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: var(--space-2);
-  background: var(--panel-surface);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-1) var(--space-2);
 }
 
-.detail__subnav-trail {
+.detail__header h1 {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  margin-bottom: 8px;
+  color: var(--color-text);
+}
+
+.detail__contact-actions {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.8rem;
-  color: var(--panel-text-muted);
+  gap: var(--space-1);
 }
 
-.detail__subnav-trail a {
-  color: var(--panel-text-muted);
+.contact-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
   text-decoration: none;
 }
 
-.detail__subnav-trail strong {
-  color: var(--panel-text);
-}
-
-.detail__subnav-tabs {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 0.82rem;
-  color: var(--panel-text-muted);
-}
-
-.detail__subnav-tabs-active {
+.contact-btn--outline {
+  background: #fff;
   color: var(--color-primary);
-  font-weight: 700;
-  border-bottom: 2px solid var(--color-primary);
-  padding-bottom: 4px;
-}
-
-.detail__new-credit {
-  background: var(--color-primary-dark);
-  border: none;
-}
-
-.header-card {
-  background: var(--panel-surface);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.header-card__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.header-card__identity {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.header-card__avatar {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  background: var(--panel-surface-alt);
-  color: var(--color-primary);
-  display: grid;
-  place-items: center;
-  font-weight: 700;
-  font-size: 1rem;
-}
-
-.header-card__identity h1 {
-  font-size: 1.3rem;
-  color: var(--panel-text);
-}
-
-.header-card__status {
-  margin-top: 6px;
-}
-
-.header-card__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-}
-
-.header-card__whatsapp {
-  background: #25d366;
-  border: none;
-}
-
-.header-card__status-select {
-  min-width: 170px;
-}
-
-.header-card__icon-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
-  color: var(--panel-text-muted);
-  cursor: pointer;
-}
-
-.header-card__meta {
-  display: flex;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  font-size: 0.85rem;
-  color: var(--panel-text-muted);
-  border-top: 1px solid var(--panel-border);
-  padding-top: var(--space-2);
-}
-
-.header-card__meta span {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.header-card__meta strong {
-  color: var(--panel-text);
-}
-
-.header-card__meta-verified {
-  color: var(--color-success);
+  border: 1px solid var(--color-primary);
 }
 
 .detail__grid {
   display: grid;
-  grid-template-columns: 1.6fr 1fr;
-  gap: var(--space-2);
-  align-items: start;
-}
-
-.detail__main,
-.detail__side {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-3);
 }
 
 .card {
-  background: var(--panel-surface);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-}
-
-.card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-2);
-}
-
-.card__header h2 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.98rem;
-  color: var(--panel-text);
-}
-
-.kv-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
-}
-
-.kv-grid dt {
-  font-size: 0.74rem;
-  color: var(--panel-text-muted);
-  margin-bottom: 2px;
-}
-
-.kv-grid dd {
-  font-size: 0.9rem;
-  color: var(--panel-text);
-  font-weight: 500;
-}
-
-.capacity-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-2);
-}
-
-.capacity-cell {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: var(--panel-bg);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-}
-
-.capacity-cell .label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.76rem;
-  color: var(--panel-text-muted);
-}
-
-.capacity-cell strong {
-  font-size: 1.1rem;
-  color: var(--panel-text);
-}
-
-.capacity-cell .hint {
-  font-size: 0.7rem;
-  color: var(--color-success);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.capacity-cell__tag {
-  font-size: 0.62rem;
-}
-
-.capacity-cell__bar {
-  height: 6px;
-}
-
-.certificate {
-  background: var(--color-primary);
-  color: #ffffff;
+  background: #fff;
+  border: 1px solid #e3e9ea;
   border-radius: var(--radius-md);
   padding: var(--space-3);
-}
-
-.certificate__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 0.72rem;
-  letter-spacing: 0.04em;
-  opacity: 0.85;
-}
-
-.certificate__price {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  gap: var(--space-2);
 }
 
-.certificate__price strong {
+.card--wide {
+  grid-column: 1 / -1;
+}
+
+.card h2 {
   font-family: var(--font-heading);
-  font-size: 1.3rem;
+  font-size: 1.1rem;
+  color: var(--color-text);
 }
 
-.certificate__property {
-  font-family: var(--font-heading);
-  font-size: 1.2rem;
-  margin: 8px 0 var(--space-2);
-}
-
-.certificate__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-  padding: var(--space-2) 0;
-}
-
-.certificate__grid h3 {
+dl {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.8rem;
-  opacity: 0.85;
-  margin-bottom: 10px;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
 }
 
-.certificate__row {
+dl > div {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  font-size: 0.85rem;
-  padding: 4px 0;
+  gap: var(--space-2);
+  border-bottom: 1px solid #eef1f2;
+  padding-bottom: 8px;
 }
 
-.certificate__row--bbp {
-  color: #a7f3d0;
+dt {
+  color: var(--color-neutral);
 }
 
-.certificate__row--total {
-  border-top: 1px dashed rgba(255, 255, 255, 0.3);
-  margin-top: 4px;
-  padding-top: 8px;
+dd {
+  margin: 0;
   font-weight: 600;
+  text-align: right;
 }
 
-.certificate__footer {
+.status-row {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  padding-top: var(--space-2);
+  gap: var(--space-1);
   flex-wrap: wrap;
-  gap: var(--space-2);
 }
 
-.certificate__footer span {
-  display: block;
-  font-size: 0.72rem;
-  opacity: 0.8;
+.status-row__select {
+  min-width: 200px;
+  flex: 1;
 }
 
-.certificate__footer strong {
-  font-family: var(--font-heading);
-  font-size: 2rem;
-  display: block;
-  margin: 2px 0;
+.field-error {
+  color: var(--color-error-text);
 }
 
-.certificate__footer strong small {
-  font-size: 0.9rem;
-  font-family: var(--font-body);
-  font-weight: 400;
-}
-
-.certificate__footnote {
-  max-width: 320px;
-  opacity: 0.75;
-}
-
-.certificate__footer-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.match-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.match-card {
-  position: relative;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.match-card--recommended {
-  border-color: var(--color-success);
-  background: #f2fbf7;
-}
-
-.match-card__badge {
+.note-btn {
   align-self: flex-start;
-  margin-bottom: 4px;
-}
-
-.match-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.match-card__header strong {
-  color: var(--panel-text);
-  font-size: 0.9rem;
-}
-
-.match-card__price {
-  color: var(--color-primary);
-  font-weight: 700;
-}
-
-.match-card__address {
-  font-size: 0.76rem;
-  color: var(--panel-text-muted);
-}
-
-.match-card__specs {
-  display: flex;
-  gap: var(--space-2);
-  font-size: 0.78rem;
-  color: var(--panel-text);
-}
-
-.match-card__specs small {
-  display: block;
-  color: var(--panel-text-muted);
-  font-size: 0.66rem;
-}
-
-.match-card__delivery {
-  font-size: 0.74rem;
-  color: var(--panel-text-muted);
-}
-
-.match-card__footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 4px;
-}
-
-.match-card__mivivienda {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.74rem;
-  color: var(--color-success);
-}
-
-.match-card__compare {
-  color: var(--color-secondary);
-  font-size: 0.8rem;
-  text-decoration: none;
-  font-weight: 600;
-}
-
-.empty-hint {
-  color: var(--panel-text-muted);
-  font-size: 0.85rem;
-}
-
-.crm-label {
-  font-size: 0.78rem;
-  color: var(--panel-text-muted);
-  margin-bottom: 6px;
-}
-
-.crm-textarea {
-  width: 100%;
-}
-
-.crm-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 8px 0 var(--space-2);
-}
-
-.crm-toolbar__icon {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--panel-border);
-  background: var(--panel-bg);
-  color: var(--panel-text-muted);
-  cursor: pointer;
-}
-
-.crm-toolbar__save {
-  margin-left: auto;
 }
 
 .timeline {
   list-style: none;
-  margin: 0;
+  margin: var(--space-2) 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  border-left: 3px solid var(--color-secondary);
 }
 
-.timeline li {
-  display: flex;
-  gap: 10px;
-}
-
-.timeline__dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--panel-border);
-  margin-top: 5px;
-  flex-shrink: 0;
-}
-
-.timeline__dot--done {
-  background: var(--color-success);
-}
-
-.timeline__time {
-  display: block;
-  font-size: 0.7rem;
-  color: var(--panel-text-muted);
-}
-
-.timeline strong {
-  display: block;
-  font-size: 0.85rem;
-  color: var(--panel-text);
-  margin: 2px 0;
-}
-
-.timeline p {
-  font-size: 0.8rem;
-  color: var(--panel-text-muted);
-}
-
-.reassign-select {
-  width: 100%;
-  margin-bottom: var(--space-2);
-}
-
-.detail-empty {
+.timeline__item {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  align-items: flex-start;
+  padding-left: var(--space-2);
+}
+
+.timeline__text {
+  font-weight: 500;
+  white-space: pre-wrap;
+}
+
+.timeline__meta {
+  font-size: 0.8rem;
+  color: var(--color-neutral);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 </style>

@@ -13,6 +13,7 @@
   --color-success: #2e9e6b;
   --color-warning: #f5a524;
   --color-error: #d64545;
+  --color-error-text: #c53030; /* darker variant for small error text: WCAG AA on white */
 
   --font-heading: 'Poppins', 'Segoe UI', Arial, sans-serif;
   --font-body: 'Roboto', 'Segoe UI', Arial, sans-serif;
