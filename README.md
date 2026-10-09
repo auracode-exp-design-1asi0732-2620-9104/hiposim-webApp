@@ -32,7 +32,7 @@ work without the API. Any email and password sign in as a sample advisor.
 
 ### Using the real API
 
-Create `.env.local` (not versioned) with:
+Create `.env.development.local` (not versioned; it overrides `.env.development`) with:
 
 ```sh
 VITE_API_URL=http://localhost:5000
