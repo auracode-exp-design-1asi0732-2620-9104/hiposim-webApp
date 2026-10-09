@@ -119,7 +119,7 @@ function handleLogout() {
 
         <div class="topbar__sede">
           <span class="topbar__sede-label">{{ t('nav.agency') }}</span>
-          <strong>{{ auth.session?.companyName ?? t('nav.agency') }}</strong>
+          <strong>{{ auth.session?.companyName || t('nav.agency') }}</strong>
         </div>
 
         <div class="topbar__actions">

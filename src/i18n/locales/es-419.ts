@@ -154,6 +154,7 @@ const esMessages: Messages = {
     intro: 'Tu cuenta y un resumen de los leads de tu inmobiliaria.',
     agencyTitle: 'Inmobiliaria',
     agencyName: 'Nombre',
+    noName: 'Aún no disponible',
     advisorTitle: 'Tu cuenta',
     advisorName: 'Asesor',
     advisorEmail: 'Correo',

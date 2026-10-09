@@ -9,7 +9,7 @@ export interface Session {
   fullName: string
   role: 'buyer' | 'advisor'
   /** Shown in the top bar; the advisor only sees leads of this agency. */
-  companyName: string
+  companyName: string // empty when the API does not send it yet: the screens show a translated fallback
 }
 
 function restoreSession(): Session | null {
@@ -37,7 +37,7 @@ export const useAuthStore = defineStore('auth', () => {
       email: response.user.email,
       fullName: response.user.fullName,
       role: response.user.role,
-      companyName: response.user.agencyName ?? 'Inmobiliaria',
+      companyName: response.user.agencyName ?? '',
     }
     sessionStorageApi.save(response.accessToken, JSON.stringify(next))
     session.value = next

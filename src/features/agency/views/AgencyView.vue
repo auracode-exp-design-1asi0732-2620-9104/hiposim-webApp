@@ -45,7 +45,7 @@ onMounted(async () => {
       <section class="card" aria-labelledby="agency-title">
         <h2 id="agency-title">{{ t('agency.agencyTitle') }}</h2>
         <dl>
-          <div><dt>{{ t('agency.agencyName') }}</dt><dd>{{ auth.session?.companyName }}</dd></div>
+          <div><dt>{{ t('agency.agencyName') }}</dt><dd>{{ auth.session?.companyName || t('agency.noName') }}</dd></div>
         </dl>
       </section>
 

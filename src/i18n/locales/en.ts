@@ -151,6 +151,7 @@ export default {
     intro: 'Your account and a summary of the leads of your agency.',
     agencyTitle: 'Agency',
     agencyName: 'Name',
+    noName: 'Not available yet',
     advisorTitle: 'Your account',
     advisorName: 'Advisor',
     advisorEmail: 'Email',
