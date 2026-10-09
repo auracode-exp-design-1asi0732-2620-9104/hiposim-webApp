@@ -54,6 +54,27 @@ VITE_USE_MOCK=false
 The GitHub Actions workflow (`.github/workflows/ci.yml`) runs lint, type check, tests and build on every push and pull
 request to `main` and `develop`.
 
+## Deployment (Vercel)
+
+The web app is a static single-page app, so it is published on Vercel. `vercel.json` sends every route (`/leads`,
+`/login`, ...) to `index.html`, otherwise a page refresh would give a 404.
+
+1. In Vercel, choose **Add New... > Project** and import this GitHub repository. The Vite preset is detected on its own.
+   The Vercel GitHub app must be installed on the organization that owns the repository (this needs an organization admin).
+2. Set these **Environment Variables** for Production (they are not stored in the repository):
+
+   | Name | Value |
+   |---|---|
+   | `VITE_API_URL` | Public HTTPS URL of the API, without a trailing slash |
+   | `VITE_USE_MOCK` | `false` |
+
+3. Deploy. Every push to `main` publishes a new production version.
+4. Add the production URL (`https://<project>.vercel.app`) to `Cors__AllowedOrigins` in the API. Preview deployments of
+   pull requests have other URLs, so the API blocks them unless they are added as well.
+
+Vercel Hobby is free for personal, non-commercial use and has no team features: the project belongs to the account
+that connects it.
+
 ## Project structure
 
 ```
