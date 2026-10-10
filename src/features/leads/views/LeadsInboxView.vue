@@ -9,6 +9,7 @@ import Message from 'primevue/message'
 import { leadsApi } from '@/features/leads/api/leads.api'
 import { leadStatuses, type LeadStatus, type LeadSummary } from '@/features/leads/api/leads.types'
 import { statusLabel, statusSeverity } from '@/features/leads/api/leads.labels'
+import { buildLeadsCsv, downloadCsv } from '@/features/leads/export/leads.csv'
 import { formatCurrency, formatInstallment, formatRate, formatDateTime } from '@/shared/format'
 
 const router = useRouter()
@@ -43,6 +44,23 @@ async function loadLeads() {
   }
 }
 
+// Exports what the inbox shows, with the filter applied. Nothing is requested from the API.
+function exportCsv() {
+  const csv = buildLeadsCsv(
+    leads.value,
+    {
+      buyer: t('leads.colBuyer'),
+      propertyPrice: t('leads.csvPropertyPrice'),
+      installment: t('leads.csvInstallment'),
+      tcea: t('leads.csvTcea'),
+      status: t('leads.colStatus'),
+      received: t('leads.colReceived'),
+    },
+    statusLabel,
+  )
+  downloadCsv(`hiposim-leads-${new Date().toISOString().slice(0, 10)}.csv`, csv)
+}
+
 function goToDetail(id: string) {
   router.push({ name: 'lead-detail', params: { id } })
 }
@@ -64,7 +82,18 @@ onMounted(loadLeads)
         <h1>{{ t('leads.title') }}</h1>
         <p>{{ t('leads.intro') }}</p>
       </div>
-      <Button :label="t('leads.refresh')" icon="pi pi-refresh" severity="secondary" outlined :loading="isLoading" @click="loadLeads" />
+      <div class="leads__actions">
+        <Button
+          :label="t('leads.exportCsv')"
+          icon="pi pi-download"
+          severity="secondary"
+          outlined
+          :disabled="isLoading || leads.length === 0"
+          :title="t('leads.exportHint')"
+          @click="exportCsv"
+        />
+        <Button :label="t('leads.refresh')" icon="pi pi-refresh" severity="secondary" outlined :loading="isLoading" @click="loadLeads" />
+      </div>
     </div>
 
     <div class="leads__kpis" role="group" :aria-label="t('leads.summary')">
@@ -96,6 +125,8 @@ onMounted(loadLeads)
         />
         <span class="leads__count" aria-live="polite">{{ t('leads.count', { count: counters.total }) }}</span>
       </div>
+
+      <p v-if="leads.length > 0" class="leads__hint">{{ t('leads.exportHint') }}</p>
 
       <Message v-if="hasError" severity="error" :closable="false">
         {{ t('leads.loadError') }}
@@ -168,6 +199,12 @@ onMounted(loadLeads)
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.leads__actions {
+  display: flex;
+  gap: var(--space-1);
   flex-wrap: wrap;
 }
 
@@ -245,6 +282,12 @@ onMounted(loadLeads)
   margin-left: auto;
   color: var(--color-neutral);
   font-size: 0.9rem;
+}
+
+.leads__hint {
+  margin: 0;
+  color: var(--color-neutral);
+  font-size: 0.85rem;
 }
 
 .leads__state {

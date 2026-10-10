@@ -29,6 +29,27 @@ describe('LeadsInboxView', () => {
     expect(wrapper.text()).not.toMatch(/DNI|SBS|BBP/i)
   })
 
+  it('exports the visible leads as a CSV file', async () => {
+    const created: Blob[] = []
+    URL.createObjectURL = (blob: Blob | MediaSource) => {
+      created.push(blob as Blob)
+      return 'blob:test'
+    }
+    URL.revokeObjectURL = () => undefined
+    HTMLAnchorElement.prototype.click = () => undefined // jsdom cannot navigate to a download
+    const { router, plugins } = mountPlugins()
+    await router.push('/leads')
+    const wrapper = mount(LeadsInboxView, { global: { plugins } })
+    await settle()
+
+    const button = wrapper.findAll('button').find((b) => b.text() === 'Export CSV')
+    expect(button).toBeDefined()
+    await button!.trigger('click')
+
+    expect(created).toHaveLength(1)
+    expect(await created[0]!.text()).toContain('Ana Torres')
+  })
+
   it('opens the lead card from its row', async () => {
     const { router, plugins } = mountPlugins()
     await router.push('/leads')
