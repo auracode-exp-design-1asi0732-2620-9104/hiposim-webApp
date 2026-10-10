@@ -35,11 +35,6 @@ const esMessages: Messages = {
     sidebarSub: 'Portal de inmobiliarias',
     newLeadsBadge: '{count} leads nuevos',
   },
-  comingSoon: {
-    text: 'Próximamente. Esta sección no forma parte de la entrega actual de HipoSim.',
-    back: 'Ir a Leads e Interesados',
-    fallbackTitle: 'Esta sección',
-  },
   auth: {
     subtitle: 'Portal de Inmobiliarias',
     email: 'Correo electrónico',

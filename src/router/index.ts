@@ -17,7 +17,7 @@ const router = createRouter({
       meta: { titleKey: 'titles.login' },
     },
     // Agency sign-up has no user story in this delivery (accounts are provided by the HipoSim team).
-    // RegisterView.vue is kept in the repo, but it is not reachable.
+    // There is no sign-up screen: the old address goes to the login.
     { path: '/registro', redirect: '/login' },
     {
       path: '/',

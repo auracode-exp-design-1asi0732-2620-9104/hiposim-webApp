@@ -32,11 +32,6 @@ export default {
     sidebarSub: 'Real estate portal',
     newLeadsBadge: '{count} new leads',
   },
-  comingSoon: {
-    text: 'Coming soon. This section is not part of the current HipoSim delivery.',
-    back: 'Go to Leads',
-    fallbackTitle: 'This section',
-  },
   auth: {
     subtitle: 'Real Estate Portal',
     email: 'Email',
