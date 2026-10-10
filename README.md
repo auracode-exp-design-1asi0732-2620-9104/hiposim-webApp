@@ -11,12 +11,17 @@ and axios.
 
 | Story | What it does | Status |
 |---|---|---|
-| US22 | Advisor login with JWT (only advisor accounts can enter) | Done, against the API contract v0 |
-| US23 | Lead inbox with a status filter | Done, lead endpoints are a proposal (see below) |
-| US24 | Lead card: contact data, shared simulation, follow-up history, WhatsApp and call links | Done, same note |
-| US25 | Change the lead status and add follow-up notes | Done, same note |
+| US22 | Advisor login with JWT (only advisor accounts can enter) | Done, verified against the API |
+| US23 | Lead inbox with a status filter | Done, verified against the API |
+| US24 | Lead card: contact data, shared simulation, follow-up history, WhatsApp and call links | Done, verified against the API |
+| US25 | Change the lead status and add follow-up notes | Done, verified against the API |
 
-Dashboard, My agency, Notifications and Settings show a "Coming soon" page: they have no user story in this delivery.
+Supporting screens, built from the same leads list (no extra endpoints):
+
+- **Dashboard:** leads received, new, in follow-up and closed, a bar per status and the latest leads.
+- **Notifications:** leads that are still new, refreshed every minute.
+- **My agency:** the advisor's account and the lead count per status.
+- **Settings:** language, account data and legal links.
 
 ## Getting started
 
@@ -86,7 +91,10 @@ src/
   shared/
     api/         axios client, token handling, 401 handling
     components/  logo, language switcher
-    views/       "Coming soon" page
+    dashboard/   summary of the leads
+    notifications/ new leads, refreshed every minute
+    agency/      account and lead count per status
+    settings/    language, account and legal links
   i18n/          English (default) and Spanish (es-419) messages
   router/        routes and the advisor-only guard
 ```
@@ -94,11 +102,13 @@ src/
 ## API contract
 
 - Auth follows `hiposim-backEnd/docs/api-contract/openapi.v0.yaml` (`POST /api/auth/login`).
-- **Leads are not in that contract yet.** The client in `src/features/leads/api/` assumes:
-  `GET /api/leads?status=`, `GET /api/leads/{id}`, `PATCH /api/leads/{id}/status`, `POST /api/leads/{id}/notes`.
-  Statuses: `new`, `contacted`, `appointmentScheduled`, `closed`, `discarded`. Rates are fractions (`0.0885` = 8.85%).
-  Everything that depends on the contract lives in `leads.api.ts` and `leads.types.ts`, so adjusting it is local.
-- The login response needs `agencyName` for the top bar (optional, falls back to "Agency").
+- Leads follow the API of `hiposim-backEnd` (`develop`, TS08): `GET /api/leads?status=`, `GET /api/leads/{id}`,
+  `PATCH /api/leads/{id}/status` and `POST /api/leads/{id}/notes`. The API statuses (`New`, `InContact`,
+  `AppointmentScheduled`, `Closed`, `Discarded`) are translated in `leads.mapper.ts`, which is the only place that knows
+  the API shape. Rates are fractions (`0.0885` = 8.85%).
+- Values the API does not send yet are shown as "N/A" or hidden: the property value in the inbox, and the bonus,
+  financed amount and term in the lead card.
+- The login response has no `agencyName`, so the top bar shows an empty agency until the API sends it.
 
 ## Languages and accessibility
 
