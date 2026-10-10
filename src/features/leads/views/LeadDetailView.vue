@@ -8,9 +8,15 @@ import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import Message from 'primevue/message'
 import { leadsApi } from '@/features/leads/api/leads.api'
-import { leadStatuses, type LeadDetail, type LeadStatus } from '@/features/leads/api/leads.types'
+import {
+  leadStatuses,
+  type LeadDetail,
+  type LeadHistoryEntry,
+  type LeadStatus,
+} from '@/features/leads/api/leads.types'
 import { statusLabel, statusSeverity } from '@/features/leads/api/leads.labels'
 import { getStatus } from '@/shared/api/http'
+import { useAuthStore } from '@/features/auth/store/auth.store'
 import { useNotificationsStore } from '@/features/notifications/store/notifications.store'
 import {
   formatCurrency,
@@ -26,6 +32,7 @@ const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
 const notifications = useNotificationsStore()
+const auth = useAuthStore()
 const leadId = route.params.id as string
 
 const lead = ref<LeadDetail | null>(null)
@@ -56,8 +63,12 @@ function describeEntry(type: 'status' | 'note', text: string) {
   return type === 'status' ? t('detail.statusEntry', { status: statusLabel(text as LeadStatus) }) : text
 }
 
-function authorLabel(name: string) {
-  return name === 'Sistema' || name === 'System' ? t('detail.system') : name
+// The API sends the id of the advisor, not a name: the signed-in advisor is "You", the others are "Advisor".
+function authorLabel(entry: LeadHistoryEntry) {
+  if (entry.authorId && entry.authorId === auth.session?.id) return t('detail.you')
+  if (entry.authorName === 'Sistema' || entry.authorName === 'System') return t('detail.system')
+  if (entry.authorName) return entry.authorName
+  return entry.authorId ? t('detail.advisor') : t('detail.system')
 }
 
 async function loadLead() {
@@ -163,13 +174,13 @@ onMounted(loadLead)
         <section class="card" aria-labelledby="sim-title">
           <h2 id="sim-title">{{ t('detail.simTitle') }}</h2>
           <dl>
-            <div><dt>{{ t('detail.propertyPrice') }}</dt><dd>{{ formatCurrency(lead.simulation.propertyPrice) }}</dd></div>
-            <div><dt>{{ t('detail.downPayment') }}</dt><dd>{{ formatCurrency(lead.simulation.downPayment) }}</dd></div>
-            <div><dt>{{ t('detail.bonus') }}</dt><dd>{{ formatCurrency(lead.simulation.goodPayerBonus) }}</dd></div>
-            <div><dt>{{ t('detail.financed') }}</dt><dd>{{ formatCurrency(lead.simulation.financedAmount) }}</dd></div>
-            <div><dt>{{ t('detail.term') }}</dt><dd>{{ t('detail.months', { n: lead.simulation.termInMonths }) }}</dd></div>
-            <div><dt>{{ t('detail.installment') }}</dt><dd>{{ formatInstallment(lead.simulation.monthlyInstallment) }}</dd></div>
-            <div><dt>{{ t('detail.tcea') }}</dt><dd>{{ formatRate(lead.simulation.tcea) }}</dd></div>
+            <div v-if="lead.simulation.propertyPrice !== null"><dt>{{ t('detail.propertyPrice') }}</dt><dd>{{ formatCurrency(lead.simulation.propertyPrice) }}</dd></div>
+            <div v-if="lead.simulation.downPayment !== null"><dt>{{ t('detail.downPayment') }}</dt><dd>{{ formatCurrency(lead.simulation.downPayment) }}</dd></div>
+            <div v-if="lead.simulation.goodPayerBonus !== null"><dt>{{ t('detail.bonus') }}</dt><dd>{{ formatCurrency(lead.simulation.goodPayerBonus) }}</dd></div>
+            <div v-if="lead.simulation.financedAmount !== null"><dt>{{ t('detail.financed') }}</dt><dd>{{ formatCurrency(lead.simulation.financedAmount) }}</dd></div>
+            <div v-if="lead.simulation.termInMonths !== null"><dt>{{ t('detail.term') }}</dt><dd>{{ t('detail.months', { n: lead.simulation.termInMonths }) }}</dd></div>
+            <div v-if="lead.simulation.monthlyInstallment !== null"><dt>{{ t('detail.installment') }}</dt><dd>{{ formatInstallment(lead.simulation.monthlyInstallment) }}</dd></div>
+            <div v-if="lead.simulation.tcea !== null"><dt>{{ t('detail.tcea') }}</dt><dd>{{ formatRate(lead.simulation.tcea) }}</dd></div>
           </dl>
         </section>
 
@@ -210,7 +221,7 @@ onMounted(loadLead)
           <ol class="timeline" :aria-label="t('detail.history')">
             <li v-for="(entry, index) in history" :key="index" class="timeline__item">
               <span class="timeline__text">{{ describeEntry(entry.type, entry.text) }}</span>
-              <span class="timeline__meta">{{ authorLabel(entry.authorName) }} · {{ formatDateTime(entry.atUtc) }}</span>
+              <span class="timeline__meta">{{ authorLabel(entry) }} · {{ formatDateTime(entry.atUtc) }}</span>
             </li>
           </ol>
         </section>

@@ -91,6 +91,7 @@ export default {
     colReceived: 'Received',
     colActions: 'Actions',
     perMonth: '/month',
+    notAvailable: 'N/A',
     view: 'View details',
     viewFor: 'View details of {name}',
   },
@@ -129,6 +130,8 @@ export default {
     history: 'Follow-up history',
     statusEntry: 'Status: {status}',
     system: 'System',
+    you: 'You',
+    advisor: 'Advisor',
   },
   notifications: {
     title: 'Notifications',

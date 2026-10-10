@@ -5,6 +5,7 @@ import { sessionStorageApi } from '@/shared/api/session-storage'
 import { setUnauthorizedHandler } from '@/shared/api/http'
 
 export interface Session {
+  id: string
   email: string
   fullName: string
   role: 'buyer' | 'advisor'
@@ -34,6 +35,7 @@ export const useAuthStore = defineStore('auth', () => {
       throw new Error('Only advisors can use this portal.')
     }
     const next: Session = {
+      id: response.user.id,
       email: response.user.email,
       fullName: response.user.fullName,
       role: response.user.role,

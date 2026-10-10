@@ -5,6 +5,8 @@ import type { LeadDetail, LeadHistoryEntry, LeadStatus, LeadSummary } from './le
 const delay = () => new Promise((resolve) => setTimeout(resolve, 250))
 
 const advisor = 'Asesor de prueba'
+// Same id as the sample login (auth.api.ts), so the card shows "You" for these entries.
+const advisorId = '00000000-0000-0000-0000-000000000001'
 
 const leads: LeadDetail[] = [
   {
@@ -15,7 +17,7 @@ const leads: LeadDetail[] = [
       propertyPrice: 280000, downPayment: 42000, goodPayerBonus: 18200, financedAmount: 219800,
       termInMonths: 240, monthlyInstallment: 1909, tcea: 0.0885,
     },
-    history: [{ type: 'status', text: 'new', authorName: 'Sistema', atUtc: '2026-10-08T15:20:00Z' }],
+    history: [{ type: 'status', text: 'new', authorId: null, authorName: 'Sistema', atUtc: '2026-10-08T15:20:00Z' }],
   },
   {
     id: 'a2',
@@ -26,9 +28,9 @@ const leads: LeadDetail[] = [
       termInMonths: 300, monthlyInstallment: 2105, tcea: 0.0912,
     },
     history: [
-      { type: 'status', text: 'new', authorName: 'Sistema', atUtc: '2026-10-07T12:00:00Z' },
-      { type: 'status', text: 'contacted', authorName: advisor, atUtc: '2026-10-07T16:30:00Z' },
-      { type: 'note', text: 'Pidio ver el proyecto el sabado.', authorName: advisor, atUtc: '2026-10-07T16:32:00Z' },
+      { type: 'status', text: 'new', authorId: null, authorName: 'Sistema', atUtc: '2026-10-07T12:00:00Z' },
+      { type: 'status', text: 'contacted', authorId: advisorId, authorName: advisor, atUtc: '2026-10-07T16:30:00Z' },
+      { type: 'note', text: 'Pidio ver el proyecto el sabado.', authorId: advisorId, authorName: advisor, atUtc: '2026-10-07T16:32:00Z' },
     ],
   },
   {
@@ -40,8 +42,8 @@ const leads: LeadDetail[] = [
       termInMonths: 240, monthlyInstallment: 1688, tcea: 0.0871,
     },
     history: [
-      { type: 'status', text: 'new', authorName: 'Sistema', atUtc: '2026-10-05T09:00:00Z' },
-      { type: 'status', text: 'appointmentScheduled', authorName: advisor, atUtc: '2026-10-06T10:00:00Z' },
+      { type: 'status', text: 'new', authorId: null, authorName: 'Sistema', atUtc: '2026-10-05T09:00:00Z' },
+      { type: 'status', text: 'appointmentScheduled', authorId: advisorId, authorName: advisor, atUtc: '2026-10-06T10:00:00Z' },
     ],
   },
   {
@@ -53,8 +55,8 @@ const leads: LeadDetail[] = [
       termInMonths: 360, monthlyInstallment: 3120, tcea: 0.0954,
     },
     history: [
-      { type: 'status', text: 'new', authorName: 'Sistema', atUtc: '2026-10-04T08:00:00Z' },
-      { type: 'status', text: 'discarded', authorName: advisor, atUtc: '2026-10-05T09:00:00Z' },
+      { type: 'status', text: 'new', authorId: null, authorName: 'Sistema', atUtc: '2026-10-04T08:00:00Z' },
+      { type: 'status', text: 'discarded', authorId: advisorId, authorName: advisor, atUtc: '2026-10-05T09:00:00Z' },
     ],
   },
 ]
@@ -88,12 +90,12 @@ export const leadsMock = {
     await delay()
     const lead = find(id)
     lead.status = status
-    lead.history.push({ type: 'status', text: status, authorName: advisor, atUtc: new Date().toISOString() })
+    lead.history.push({ type: 'status', text: status, authorId: advisorId, authorName: advisor, atUtc: new Date().toISOString() })
     return { id, status }
   },
   async addNote(id: string, text: string): Promise<LeadHistoryEntry> {
     await delay()
-    const entry: LeadHistoryEntry = { type: 'note', text, authorName: advisor, atUtc: new Date().toISOString() }
+    const entry: LeadHistoryEntry = { type: 'note', text, authorId: advisorId, authorName: advisor, atUtc: new Date().toISOString() }
     find(id).history.push(entry)
     return entry
   },

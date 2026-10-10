@@ -68,8 +68,11 @@ onBeforeUnmount(() => clearInterval(timer))
           <span>
             {{
               t('notifications.detailLine', {
-                price: formatCurrency(lead.propertyPrice),
-                installment: formatInstallment(lead.monthlyInstallment),
+                price: lead.propertyPrice === null ? t('leads.notAvailable') : formatCurrency(lead.propertyPrice),
+                installment:
+                  lead.monthlyInstallment === null
+                    ? t('leads.notAvailable')
+                    : formatInstallment(lead.monthlyInstallment),
               })
             }}
           </span>

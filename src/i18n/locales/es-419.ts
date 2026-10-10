@@ -94,6 +94,7 @@ const esMessages: Messages = {
     colReceived: 'Recibido',
     colActions: 'Acciones',
     perMonth: '/mes',
+    notAvailable: 'N/D',
     view: 'Ver ficha',
     viewFor: 'Ver ficha de {name}',
   },
@@ -132,6 +133,8 @@ const esMessages: Messages = {
     history: 'Historial de seguimiento',
     statusEntry: 'Estado: {status}',
     system: 'Sistema',
+    you: 'Tú',
+    advisor: 'Asesor',
   },
   notifications: {
     title: 'Notificaciones',

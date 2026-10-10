@@ -122,9 +122,14 @@ onMounted(loadLeads)
         <tbody>
           <tr v-for="lead in leads" :key="lead.id">
             <td><strong>{{ lead.buyerName }}</strong></td>
-            <td>{{ formatCurrency(lead.propertyPrice) }}</td>
-            <td>{{ formatInstallment(lead.monthlyInstallment) }}{{ t('leads.perMonth') }}</td>
-            <td>{{ formatRate(lead.tcea) }}</td>
+            <td>{{ lead.propertyPrice === null ? t('leads.notAvailable') : formatCurrency(lead.propertyPrice) }}</td>
+            <td>
+              <template v-if="lead.monthlyInstallment !== null">
+                {{ formatInstallment(lead.monthlyInstallment) }}{{ t('leads.perMonth') }}
+              </template>
+              <template v-else>{{ t('leads.notAvailable') }}</template>
+            </td>
+            <td>{{ lead.tcea === null ? t('leads.notAvailable') : formatRate(lead.tcea) }}</td>
             <td><Tag :value="statusLabel(lead.status)" :severity="statusSeverity[lead.status]" /></td>
             <td>{{ formatDateTime(lead.receivedAtUtc) }}</td>
             <td>
