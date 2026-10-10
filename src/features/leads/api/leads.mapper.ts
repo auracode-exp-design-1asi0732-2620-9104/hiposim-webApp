@@ -10,6 +10,8 @@ export interface ApiLeadInbox {
   buyerName: string
   buyerEmail: string
   simulationId: string
+  /** Sent since the API added the simulation figures to the inbox; absent in older deployments. */
+  propertyPrice?: number | null
   monthlyInstallment: number | null
   tcea: number | null
   status: string
@@ -41,6 +43,10 @@ export interface ApiLeadDetail {
   simulationId: string
   propertyPrice: number | null
   downPayment: number | null
+  /** The three fields below are absent in older deployments of the API. */
+  goodPayerBonus?: number | null
+  financedAmount?: number | null
+  termInMonths?: number | null
   monthlyInstallment: number | null
   tcea: number | null
   status: string
@@ -74,7 +80,7 @@ export function inboxItemFromApi(dto: ApiLeadInbox): LeadSummary {
   return {
     id: dto.id,
     buyerName: dto.buyerName,
-    propertyPrice: null,
+    propertyPrice: dto.propertyPrice ?? null,
     monthlyInstallment: dto.monthlyInstallment,
     tcea: dto.tcea,
     status: statusFromApi(dto.status),
@@ -106,10 +112,9 @@ export function detailFromApi(dto: ApiLeadDetail): LeadDetail {
     simulation: {
       propertyPrice: dto.propertyPrice,
       downPayment: dto.downPayment,
-      // Not in the lead detail of the API yet.
-      goodPayerBonus: null,
-      financedAmount: null,
-      termInMonths: null,
+      goodPayerBonus: dto.goodPayerBonus ?? null,
+      financedAmount: dto.financedAmount ?? null,
+      termInMonths: dto.termInMonths ?? null,
       monthlyInstallment: dto.monthlyInstallment,
       tcea: dto.tcea,
     },

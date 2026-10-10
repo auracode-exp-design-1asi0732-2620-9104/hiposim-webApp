@@ -95,6 +95,13 @@ describe('lead contract mapper', () => {
     expect(lead.history[1]?.authorId).toBe('adv-1')
   })
 
+  it('maps the simulation figures the API sends in the inbox and in the card', () => {
+    expect(inboxItemFromApi({ ...inbox, propertyPrice: 280000 }).propertyPrice).toBe(280000)
+
+    const lead = detailFromApi({ ...detail, goodPayerBonus: 18200, financedAmount: 219800, termInMonths: 240 })
+    expect(lead.simulation).toMatchObject({ goodPayerBonus: 18200, financedAmount: 219800, termInMonths: 240 })
+  })
+
   it('maps a note created through the API', () => {
     expect(noteFromApi({ id: 'n2', authorId: 'adv-2', content: 'Visita agendada', createdAt: '2026-10-10T09:00:00Z' })).toEqual({
       type: 'note',

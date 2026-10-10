@@ -40,3 +40,5 @@ __screenshots__/
 
 # Claude Code local config
 .claude
+
+.vercel
