@@ -1,304 +1,314 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import Chart from 'primevue/chart'
+import { useI18n } from 'vue-i18n'
 import Button from 'primevue/button'
+import Message from 'primevue/message'
 import Tag from 'primevue/tag'
 import { useAuthStore } from '@/features/auth/store/auth.store'
-import {
-  mockLeads,
-  getRecentActivity,
-  getWeeklyLeadCounts,
-  statusLabels,
-  statusSeverity,
-  formatCurrency,
-  formatDate,
-} from '@/features/leads/data/mock-leads'
+import { leadsApi } from '@/features/leads/api/leads.api'
+import { leadStatuses, type LeadStatus, type LeadSummary } from '@/features/leads/api/leads.types'
+import { statusLabel, statusSeverity } from '@/features/leads/api/leads.labels'
+import { formatDateTime, formatInstallment } from '@/shared/format'
 
 const router = useRouter()
+const { t } = useI18n()
 const auth = useAuthStore()
 
-const kpis = computed(() => {
-  const nuevos = mockLeads.filter((l) => l.status === 'nuevo').length
-  const cerrados = mockLeads.filter((l) => l.status === 'cerrado').length
-  const totalPropiedades = mockLeads.reduce((sum, l) => sum + l.matchedProperties.length, 0)
-  const conversion = Math.round((cerrados / mockLeads.length) * 100)
+const leads = ref<LeadSummary[]>([])
+const isLoading = ref(true)
+const hasError = ref(false)
 
-  return { nuevos, cerrados, totalPropiedades, conversion }
-})
+const RECENT_LIMIT = 5
 
-const recentActivity = computed(() => getRecentActivity(5))
+const countOf = (status: LeadStatus) => leads.value.filter((lead) => lead.status === status).length
 
-const weekly = getWeeklyLeadCounts()
+// Everything is counted from the list the inbox shows: real data, nothing invented.
+const total = computed(() => leads.value.length)
+const newCount = computed(() => countOf('new'))
+const followUpCount = computed(() => countOf('contacted') + countOf('appointmentScheduled'))
+const closedCount = computed(() => countOf('closed'))
+const closingRate = computed(() => (total.value === 0 ? 0 : Math.round((closedCount.value / total.value) * 100)))
 
-const chartData = ref({
-  labels: weekly.labels,
-  datasets: [
-    {
-      label: 'Leads recibidos',
-      data: weekly.values,
-      backgroundColor: '#3AAFA9',
-      borderRadius: 6,
-    },
-  ],
-})
+const byStatus = computed(() =>
+  leadStatuses.map((status) => ({
+    status,
+    count: countOf(status),
+    share: total.value === 0 ? 0 : Math.round((countOf(status) / total.value) * 100),
+  })),
+)
 
-const chartOptions = ref({
-  plugins: {
-    legend: { display: false },
-  },
-  scales: {
-    x: { grid: { display: false }, ticks: { color: '#64748b' } },
-    y: { grid: { color: 'rgba(15, 32, 30, 0.08)' }, ticks: { color: '#64748b' }, beginAtZero: true },
-  },
-})
+const recent = computed(() =>
+  [...leads.value]
+    .sort((a, b) => b.receivedAtUtc.localeCompare(a.receivedAtUtc))
+    .slice(0, RECENT_LIMIT),
+)
 
-function goToLead(id: string) {
-  router.push({ name: 'lead-detail', params: { id } })
+async function load() {
+  isLoading.value = true
+  hasError.value = false
+  try {
+    leads.value = await leadsApi.list()
+  } catch {
+    hasError.value = true
+  } finally {
+    isLoading.value = false
+  }
 }
+
+onMounted(load)
 </script>
 
 <template>
-  <div class="dashboard">
-    <div class="dashboard__header">
-      <h1>Hola, {{ auth.session?.companyName ?? 'Inmobiliaria' }} 👋</h1>
-      <p>Este es el resumen de tu actividad en HipoSim esta semana.</p>
+  <div class="dash">
+    <div class="dash__header">
+      <div>
+        <h1>{{ t('dashboard.greeting', { name: auth.session?.fullName ?? '' }) }}</h1>
+        <p>{{ t('dashboard.intro') }}</p>
+      </div>
+      <Button
+        :label="t('dashboard.refresh')"
+        icon="pi pi-refresh"
+        severity="secondary"
+        outlined
+        :loading="isLoading"
+        @click="load"
+      />
     </div>
 
-    <div class="dashboard__kpis">
-      <div class="kpi-card">
-        <span class="kpi-card__label">Leads Nuevos</span>
-        <strong class="kpi-card__value kpi-card__value--accent">{{ kpis.nuevos }}</strong>
-        <span class="kpi-card__hint">Esta semana</span>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-card__label">Tasa de Cierre</span>
-        <strong class="kpi-card__value">{{ kpis.conversion }}%</strong>
-        <span class="kpi-card__hint">Leads cerrados / total</span>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-card__label">Propiedades con Match</span>
-        <strong class="kpi-card__value">{{ kpis.totalPropiedades }}</strong>
-        <span class="kpi-card__hint">Sugeridas a prospectos</span>
-      </div>
-      <div class="kpi-card">
-        <span class="kpi-card__label">Leads Cerrados</span>
-        <strong class="kpi-card__value">{{ kpis.cerrados }}</strong>
-        <span class="kpi-card__hint">Total histórico (demo)</span>
-      </div>
-    </div>
+    <Message v-if="hasError" severity="error" :closable="false">
+      {{ t('dashboard.loadError') }}
+      <Button :label="t('dashboard.retry')" size="small" text @click="load" />
+    </Message>
 
-    <div class="dashboard__grid">
-      <section class="card">
-        <div class="card__header">
-          <h2>Leads recibidos por semana</h2>
-        </div>
-        <Chart type="bar" :data="chartData" :options="chartOptions" class="dashboard__chart" />
-      </section>
+    <p v-else-if="isLoading && total === 0" class="dash__state" role="status">{{ t('dashboard.loading') }}</p>
 
-      <section class="card">
-        <div class="card__header">
-          <h2>Actividad reciente</h2>
-        </div>
-        <ul class="activity-feed">
-          <li v-for="item in recentActivity" :key="item.id" @click="goToLead(item.leadId)">
-            <div class="activity-feed__dot" />
-            <div>
-              <strong>{{ item.leadName }}</strong>
-              <p>{{ item.description }}</p>
-              <span>{{ formatDate(item.date) }}</span>
-            </div>
-          </li>
-        </ul>
-      </section>
+    <template v-else>
+      <ul class="dash__kpis" :aria-label="t('leads.summary')">
+        <li class="kpi">
+          <span>{{ t('dashboard.kpiTotal') }}</span>
+          <strong>{{ total }}</strong>
+        </li>
+        <li class="kpi kpi--new">
+          <span>{{ t('dashboard.kpiNew') }}</span>
+          <strong>{{ newCount }}</strong>
+        </li>
+        <li class="kpi">
+          <span>{{ t('dashboard.kpiFollowUp') }}</span>
+          <strong>{{ followUpCount }}</strong>
+        </li>
+        <li class="kpi kpi--closed">
+          <span>{{ t('dashboard.kpiClosed') }}</span>
+          <strong>{{ closedCount }}</strong>
+          <small>
+            {{ t('dashboard.conversion') }}: {{ closingRate }}%
+          </small>
+        </li>
+      </ul>
 
-      <section class="card card--wide">
-        <div class="card__header">
-          <h2>Leads que necesitan seguimiento</h2>
-          <Button label="Ver bandeja completa" text size="small" @click="router.push({ name: 'leads' })" />
-        </div>
-        <ul class="follow-up-list">
-          <li v-for="lead in mockLeads.filter((l) => l.status !== 'cerrado').slice(0, 4)" :key="lead.id">
-            <div>
-              <strong>{{ lead.name }}</strong>
-              <span>{{ formatCurrency(lead.simulation.propertyPrice) }} · TCEA {{ lead.simulation.tcea }}%</span>
-            </div>
-            <div class="follow-up-list__actions">
-              <Tag :value="statusLabels[lead.status]" :severity="statusSeverity[lead.status]" />
-              <Button label="Ver" size="small" text @click="goToLead(lead.id)" />
-            </div>
-          </li>
-        </ul>
-      </section>
-    </div>
+      <div class="dash__grid">
+        <section class="card" aria-labelledby="dash-status">
+          <h2 id="dash-status">{{ t('dashboard.byStatus') }}</h2>
+          <ul class="bars">
+            <li v-for="item in byStatus" :key="item.status">
+              <div class="bars__row">
+                <Tag :value="statusLabel(item.status)" :severity="statusSeverity[item.status]" />
+                <strong>{{ item.count }}</strong>
+              </div>
+              <div
+                class="bars__track"
+                role="progressbar"
+                :aria-label="statusLabel(item.status)"
+                aria-valuemin="0"
+                aria-valuemax="100"
+                :aria-valuenow="item.share"
+              >
+                <div class="bars__fill" :style="{ width: `${item.share}%` }" />
+              </div>
+            </li>
+          </ul>
+          <p class="dash__help">{{ t('dashboard.conversionHelp', { closed: closedCount, total }) }}</p>
+        </section>
+
+        <section class="card" aria-labelledby="dash-recent">
+          <h2 id="dash-recent">{{ t('dashboard.recent') }}</h2>
+          <p v-if="recent.length === 0" class="dash__help">{{ t('dashboard.recentEmpty') }}</p>
+          <ul v-else class="recent">
+            <li v-for="lead in recent" :key="lead.id">
+              <div class="recent__body">
+                <strong>{{ lead.buyerName }}</strong>
+                <span>
+                  {{ lead.monthlyInstallment === null ? t('leads.notAvailable') : formatInstallment(lead.monthlyInstallment) }}{{ t('leads.perMonth') }}
+                  · {{ formatDateTime(lead.receivedAtUtc) }}
+                </span>
+              </div>
+              <Tag :value="statusLabel(lead.status)" :severity="statusSeverity[lead.status]" />
+              <Button
+                :label="t('dashboard.view')"
+                size="small"
+                text
+                :aria-label="t('dashboard.viewFor', { name: lead.buyerName })"
+                @click="router.push({ name: 'lead-detail', params: { id: lead.id } })"
+              />
+            </li>
+          </ul>
+          <Button
+            :label="t('dashboard.viewAll')"
+            icon="pi pi-arrow-right"
+            icon-pos="right"
+            severity="secondary"
+            outlined
+            @click="router.push({ name: 'leads' })"
+          />
+        </section>
+      </div>
+    </template>
   </div>
 </template>
 
 <style scoped>
-.dashboard {
+.dash {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  color: var(--panel-text);
+  min-width: 0;
 }
 
-.dashboard__header h1 {
-  font-size: 1.4rem;
-  color: var(--panel-text);
-}
-
-.dashboard__header p {
-  margin-top: 4px;
-  color: var(--panel-text-muted);
-  font-size: 0.9rem;
-}
-
-.dashboard__kpis {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+.dash__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: var(--space-2);
 }
 
-.kpi-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: var(--panel-surface);
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2);
-}
-
-.kpi-card__label {
-  font-size: 0.8rem;
-  color: var(--panel-text-muted);
-}
-
-.kpi-card__value {
+.dash__header h1 {
   font-family: var(--font-heading);
   font-size: 1.6rem;
-  color: var(--panel-text);
+  color: var(--color-text);
 }
 
-.kpi-card__value--accent {
-  color: var(--color-accent);
+.dash__header p,
+.dash__state,
+.dash__help {
+  color: var(--color-neutral);
 }
 
-.kpi-card__hint {
-  font-size: 0.75rem;
-  color: var(--panel-text-muted);
+.dash__state {
+  padding: var(--space-4) 0;
+  text-align: center;
 }
 
-.dashboard__grid {
+.dash__kpis {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: grid;
-  grid-template-columns: 1.3fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: var(--space-2);
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2) var(--space-3);
+  background: #fff;
+  border: 1px solid #e3e9ea;
+  border-top: 4px solid var(--color-primary);
+  border-radius: var(--radius-md);
+}
+
+.kpi--new {
+  border-top-color: var(--color-accent);
+}
+
+.kpi--closed {
+  border-top-color: #2e9e6b;
+}
+
+.kpi span,
+.kpi small {
+  color: var(--color-neutral);
+}
+
+.kpi strong {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  color: var(--color-text);
+}
+
+.dash__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: var(--space-3);
 }
 
 .card {
-  background: var(--panel-surface);
-  border: 1px solid var(--panel-border);
+  background: #fff;
+  border: 1px solid #e3e9ea;
   border-radius: var(--radius-md);
-  padding: var(--space-2);
-}
-
-.card--wide {
-  grid-column: 1 / -1;
-}
-
-.card__header {
+  padding: var(--space-3);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
-.card__header h2 {
-  font-size: 1rem;
-  color: var(--panel-text);
+.card h2 {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  color: var(--color-text);
 }
 
-.dashboard__chart {
-  height: 220px;
-}
-
-.activity-feed {
+.bars,
+.recent {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  max-height: 260px;
-  overflow-y: auto;
 }
 
-.activity-feed li {
+.bars__row {
   display: flex;
-  gap: 10px;
-  cursor: pointer;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
 }
 
-.activity-feed__dot {
-  width: 8px;
+.bars__track {
   height: 8px;
-  border-radius: 50%;
-  background: var(--color-secondary);
-  margin-top: 6px;
-  flex-shrink: 0;
+  background: var(--color-bg-alt);
+  border-radius: 999px;
+  overflow: hidden;
 }
 
-.activity-feed strong {
-  display: block;
-  color: var(--panel-text);
-  font-size: 0.85rem;
+.bars__fill {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: 999px;
 }
 
-.activity-feed p {
-  color: var(--panel-text-muted);
-  font-size: 0.82rem;
-  margin: 2px 0;
+.recent li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-wrap: wrap;
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid #eef1f2;
 }
 
-.activity-feed span {
-  color: var(--panel-text-muted);
-  font-size: 0.72rem;
-}
-
-.follow-up-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.recent__body {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 160px;
 }
 
-.follow-up-list li {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--panel-border);
-  font-size: 0.85rem;
-}
-
-.follow-up-list li:last-child {
-  border-bottom: none;
-}
-
-.follow-up-list strong {
-  display: block;
-  color: var(--panel-text);
-}
-
-.follow-up-list span {
-  color: var(--panel-text-muted);
-  font-size: 0.78rem;
-}
-
-.follow-up-list__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.recent__body span {
+  color: var(--color-neutral);
+  font-size: 0.9rem;
 }
 </style>
