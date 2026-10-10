@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { loginRequest } from '@/features/auth/api/auth.api'
+import { agencyNameFor, loginRequest } from '@/features/auth/api/auth.api'
 import { sessionStorageApi } from '@/shared/api/session-storage'
 import { setUnauthorizedHandler } from '@/shared/api/http'
 
@@ -39,7 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
       email: response.user.email,
       fullName: response.user.fullName,
       role: response.user.role,
-      companyName: response.user.agencyName ?? '',
+      companyName: response.user.agencyName || (await agencyNameFor(response.accessToken)),
     }
     sessionStorageApi.save(response.accessToken, JSON.stringify(next))
     session.value = next

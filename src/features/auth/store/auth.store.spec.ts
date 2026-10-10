@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { ApiError } from '@/shared/api/http'
 import { sessionStorageApi } from '@/shared/api/session-storage'
-import { loginRequest, type LoginResponse } from '@/features/auth/api/auth.api'
+import { agencyNameFor, loginRequest, type LoginResponse } from '@/features/auth/api/auth.api'
 import { useAuthStore } from './auth.store'
 
-vi.mock('@/features/auth/api/auth.api', () => ({ loginRequest: vi.fn() }))
+vi.mock('@/features/auth/api/auth.api', () => ({ loginRequest: vi.fn(), agencyNameFor: vi.fn() }))
 
 const response = (role: 'advisor' | 'buyer'): LoginResponse => ({
   accessToken: 'jwt-token',
@@ -31,6 +31,19 @@ describe('auth store', () => {
     expect(auth.isAdvisor).toBe(true)
     expect(auth.session?.companyName).toBe('Test Agency')
     expect(sessionStorageApi.getToken()).toBe('jwt-token')
+  })
+
+  it('looks the agency name up when the login response does not carry it', async () => {
+    const withoutAgency = response('advisor')
+    delete withoutAgency.user.agencyName
+    vi.mocked(loginRequest).mockResolvedValue(withoutAgency)
+    vi.mocked(agencyNameFor).mockResolvedValue('Inmobiliaria Sol')
+    const auth = useAuthStore()
+
+    await auth.login('advisor@test.pe', 'secret')
+
+    expect(agencyNameFor).toHaveBeenCalledWith('jwt-token')
+    expect(auth.session?.companyName).toBe('Inmobiliaria Sol')
   })
 
   it('rejects a buyer account: the portal is for advisors only', async () => {
