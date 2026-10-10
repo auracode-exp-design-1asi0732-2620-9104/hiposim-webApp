@@ -3,8 +3,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/features/auth/store/auth.store'
 import { i18n } from '@/i18n'
 
-const comingSoon = () => import('@/shared/views/ComingSoonView.vue')
-
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -58,8 +56,13 @@ const router = createRouter({
           component: () => import('@/features/settings/views/AccountSettingsView.vue'),
           meta: { titleKey: 'titles.settings' },
         },
-        // The dashboard has no user story in this delivery (chapter 5.2.3): shown as "Coming soon".
-        { path: 'dashboard', name: 'dashboard', component: comingSoon, meta: { titleKey: 'titles.dashboard' } },
+        // Summary built from the same list as the inbox: no extra endpoint.
+        {
+          path: 'dashboard',
+          name: 'dashboard',
+          component: () => import('@/features/dashboard/views/DashboardView.vue'),
+          meta: { titleKey: 'titles.dashboard' },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/leads' },
